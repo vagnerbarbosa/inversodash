@@ -12,6 +12,7 @@ import {
 // Importar novos componentes
 import PVStringsSection from './components/PVStringsSection'
 import ElectricalDetails from './components/ElectricalDetails'
+import CyberpunkCityBackground from './components/CyberpunkCityBackground'
 
 // Hook personalizado para WebSocket
 function useWebSocket(url) {
@@ -817,7 +818,13 @@ function App() {
   const currentData = wsData || {}
 
   return (
-    <div className="min-h-screen bg-slate-950">
+    <div className="min-h-screen relative">
+      {/* Fundo Cyberpunk Animado */}
+      <CyberpunkCityBackground currentData={currentData} />
+
+      {/* Overlay escuro para garantir legibilidade do conteúdo - ajustável */}
+      <div className="fixed inset-0 bg-slate-950/40 z-10 pointer-events-none" />
+
       {/* Header */}
       <header className="glass sticky top-0 z-50 border-b border-slate-800/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -859,7 +866,7 @@ function App() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
         {/* Stats Grid - Dados em Tempo Real */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <StatCard
@@ -929,7 +936,7 @@ function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-800/50 mt-12">
+      <footer className="border-t border-slate-800/50 mt-12 relative z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
             <p className="text-sm text-slate-500">
