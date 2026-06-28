@@ -161,21 +161,21 @@ class InverterReader:
             # Work Mode (35000)
             regs = self.read_register(35000, 1)
             if regs:
-                # Mapeamento completo dos modos do inversor Goodwe
+                # Mapeamento completo dos modos do inversor Goodwe (em português)
                 modes = {
-                    0: "Standby",
+                    0: "Espera",
                     1: "Normal",
-                    2: "Fault",
-                    3: "Off",
-                    4: "Check",
+                    2: "Falha",
+                    3: "Desligado",
+                    4: "Verificação",
                     5: "Normal",
-                    6: "Update",
+                    6: "Atualizando",
                     7: "EPS",
                     8: "DRM",
-                    9: "Self-Test"
+                    9: "Auto-Teste"
                 }
                 mode_value = regs[0]
-                data["status"]["work_mode"] = modes.get(mode_value, f"Unknown({mode_value})")
+                data["status"]["work_mode"] = modes.get(mode_value, f"Desconhecido({mode_value})")
 
             # Error Code (35001)
             regs = self.read_register(35001, 1)
@@ -243,7 +243,24 @@ async def read_inverter_goodwe_lib() -> Dict[str, Any]:
                         data["temperature"]["heatsink"] = val
                 elif "work" in name or "operation" in name:
                     if "work_mode" in name or "operation_mode" in name or ("mode" in name and "work" in name):
-                        data["status"]["work_mode"] = str(val) if val else "Normal"
+                        # Traduzir nomes de modos do inglês para português
+                        mode_translations = {
+                            "Standby": "Espera",
+                            "Stand by": "Espera",
+                            "Normal": "Normal",
+                            "Fault": "Falha",
+                            "Off": "Desligado",
+                            "Check": "Verificação",
+                            "Check Mode": "Verificação",
+                            "Update": "Atualizando",
+                            "Updating": "Atualizando",
+                            "EPS": "EPS",
+                            "DRM": "DRM",
+                            "Self-Test": "Auto-Teste",
+                            "Self Test": "Auto-Teste"
+                        }
+                        mode_value = str(val) if val else "Normal"
+                        data["status"]["work_mode"] = mode_translations.get(mode_value, mode_value)
                         work_mode_set = True
                 elif "error" in name or "fault" in name or "alarm" in name:
                     if "code" in name or "num" in name:
@@ -260,14 +277,31 @@ async def read_inverter_goodwe_lib() -> Dict[str, Any]:
             for sensor in inverter.sensors():
                 if sensor.id_ in runtime_data:
                     if "work" in sensor.name.lower() and "mode" in sensor.name.lower():
-                        data["status"]["work_mode"] = str(runtime_data[sensor.id_])
+                        val = str(runtime_data[sensor.id_])
+                        # Traduzir
+                        mode_translations = {
+                            "Standby": "Espera",
+                            "Stand by": "Espera",
+                            "Normal": "Normal",
+                            "Fault": "Falha",
+                            "Off": "Desligado",
+                            "Check": "Verificação",
+                            "Check Mode": "Verificação",
+                            "Update": "Atualizando",
+                            "Updating": "Atualizando",
+                            "EPS": "EPS",
+                            "DRM": "DRM",
+                            "Self-Test": "Auto-Teste",
+                            "Self Test": "Auto-Teste"
+                        }
+                        data["status"]["work_mode"] = mode_translations.get(val, val)
                         break
             else:
                 # Se ainda não temos work_mode, assumir Normal se há geração
                 if data["energy"].get("daily", 0) > 0 or data["pv"].get("total_power", 0) > 0:
                     data["status"]["work_mode"] = "Normal"
                 else:
-                    data["status"]["work_mode"] = "Standby"
+                    data["status"]["work_mode"] = "Espera"
 
         return data
 
