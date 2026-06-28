@@ -161,8 +161,21 @@ class InverterReader:
             # Work Mode (35000)
             regs = self.read_register(35000, 1)
             if regs:
-                modes = {0: "Standby", 1: "Normal", 2: "Fault"}
-                data["status"]["work_mode"] = modes.get(regs[0], f"Unknown({regs[0]})")
+                # Mapeamento completo dos modos do inversor Goodwe
+                modes = {
+                    0: "Standby",
+                    1: "Normal",
+                    2: "Fault",
+                    3: "Off",
+                    4: "Check",
+                    5: "Normal",
+                    6: "Update",
+                    7: "EPS",
+                    8: "DRM",
+                    9: "Self-Test"
+                }
+                mode_value = regs[0]
+                data["status"]["work_mode"] = modes.get(mode_value, f"Unknown({mode_value})")
 
             # Error Code (35001)
             regs = self.read_register(35001, 1)
@@ -226,6 +239,11 @@ async def read_inverter_goodwe_lib() -> Dict[str, Any]:
                         data["temperature"]["inverter"] = val
                     elif "heatsink" in name:
                         data["temperature"]["heatsink"] = val
+                elif "work" in name or "mode" in name or "status" in name:
+                    if "work_mode" in name or "mode" in name:
+                        data["status"]["work_mode"] = val
+                    elif "error" in name or "fault" in name:
+                        data["status"]["error_code"] = val if val else 0
                 elif "energy" in name:
                     if "day" in name or "daily" in name:
                         data["energy"]["daily"] = val
