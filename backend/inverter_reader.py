@@ -5,7 +5,15 @@ import asyncio
 import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import struct
+
+# Timezone Brasil (São Paulo)
+BR_TIMEZONE = ZoneInfo("America/Sao_Paulo")
+
+def now_brazil():
+    """Retorna datetime atual no timezone Brasil"""
+    return datetime.now(BR_TIMEZONE)
 
 from pymodbus.client import ModbusTcpClient
 
@@ -64,7 +72,7 @@ class InverterReader:
     async def read_all_data(self) -> Dict[str, Any]:
         """Lê todos os dados do inversor"""
         data = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": now_brazil().isoformat(),
             "connected": False,
             "pv": {},
             "grid": {},
@@ -184,7 +192,7 @@ async def read_inverter_goodwe_lib() -> Dict[str, Any]:
         runtime_data = await inverter.read_runtime_data()
 
         data = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": now_brazil().isoformat(),
             "connected": True,
             "pv": {},
             "grid": {},
@@ -228,4 +236,4 @@ async def read_inverter_goodwe_lib() -> Dict[str, Any]:
 
     except Exception as e:
         logger.error(f"Erro com biblioteca goodwe: {e}")
-        return {"timestamp": datetime.now().isoformat(), "connected": False, "error": str(e)}
+        return {"timestamp": now_brazil().isoformat(), "connected": False, "error": str(e)}

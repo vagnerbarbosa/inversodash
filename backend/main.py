@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import Dict, Any, List
 from contextlib import asynccontextmanager
 
@@ -13,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import schedule
 import uvicorn
 
-from inverter_reader import InverterReader, read_inverter_goodwe_lib
+from inverter_reader import InverterReader, read_inverter_goodwe_lib, BR_TIMEZONE, now_brazil
 
 # Configurar logging
 logging.basicConfig(
@@ -27,7 +28,7 @@ historical_data: List[Dict[str, Any]] = []
 MAX_HISTORY = 10080  # 7 dias em minutos
 
 current_data: Dict[str, Any] = {
-    "timestamp": datetime.now().isoformat(),
+    "timestamp": now_brazil().isoformat(),
     "connected": False,
     "pv": {"pv1_voltage": 0, "pv1_current": 0, "pv1_power": 0, "total_power": 0},
     "grid": {"voltage": 0, "current": 0, "frequency": 0},
@@ -144,7 +145,7 @@ async def get_status():
 @app.get("/api/history")
 async def get_history(minutes: int = 60):
     """Retorna histórico de dados"""
-    cutoff = datetime.now() - timedelta(minutes=minutes)
+    cutoff = now_brazil() - timedelta(minutes=minutes)
     filtered = [
         d for d in historical_data
         if datetime.fromisoformat(d.get("timestamp", "1970-01-01")) > cutoff
@@ -238,7 +239,7 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+    return {"status": "healthy", "timestamp": now_brazil().isoformat()}
 
 
 if __name__ == "__main__":
