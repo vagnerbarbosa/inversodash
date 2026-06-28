@@ -76,14 +76,3 @@ api: ## Testa endpoints da API
 
 network-info: ## Mostra IPs para acesso na rede local
 	@./scripts/show-network-info.sh
-
-setup-mdns: ## Configura mDNS (inversodash.local) - requer sudo
-	@echo "🔧 Configurando mDNS..."
-	@sudo ./scripts/setup-mdns.sh
-
-test-mdns: ## Testa se inversodash.local está funcionando
-	@echo "🧪 Testando mDNS..."
-	@avahi-resolve-host-name inversodash.local 2>/dev/null || echo "⚠️  Não resolvido (pode levar alguns segundos)"
-	@echo ""
-	@echo "Tentando ping..."
-	@ping -c 1 inversodash.local 2>/dev/null && echo "✅ mDNS funcionando!" || echo "❌ mDNS não responde"
