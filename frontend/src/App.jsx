@@ -121,6 +121,171 @@ function useHistory(minutes = 60) {
   return { history, loading, refresh: fetchHistory }
 }
 
+// Hook para dados de economia
+function useEconomy() {
+  const [economy, setEconomy] = useState({
+    tarifa_atual: 0.77,
+    bandeira: 'verde',
+    daily: { energy_kwh: 0, value_brl: 0 },
+    monthly: { energy_kwh: 0, value_brl: 0 },
+    yearly: { energy_kwh: 0, value_brl: 0 },
+    total: { energy_kwh: 0, value_brl: 0 },
+    payback: { percent: 0, years: 0, remaining_brl: 0 },
+    projection_25y: 0
+  })
+  const [loading, setLoading] = useState(false)
+
+  const fetchEconomy = async () => {
+    try {
+      const response = await fetch('/api/economy')
+      const data = await response.json()
+      if (!data.error) {
+        setEconomy(data)
+      }
+    } catch (error) {
+      console.error('Erro ao buscar economia:', error)
+    }
+  }
+
+  useEffect(() => {
+    fetchEconomy()
+    const interval = setInterval(fetchEconomy, 60000) // Atualiza a cada minuto
+    return () => clearInterval(interval)
+  }, [])
+
+  return { economy, loading, refresh: fetchEconomy }
+}
+
+// Componente de Card de Economia
+function EconomyCard({ title, value, subtitle, icon: Icon, color, delay = 0 }) {
+  const colorClasses = {
+    money: 'from-emerald-500/20 to-emerald-600/10 border-emerald-500/30',
+    savings: 'from-yellow-500/20 to-yellow-600/10 border-yellow-500/30',
+    payback: 'from-blue-500/20 to-blue-600/10 border-blue-500/30',
+    projection: 'from-purple-500/20 to-purple-600/10 border-purple-500/30',
+    default: 'from-slate-700/50 to-slate-800/50 border-slate-600/30'
+  }
+
+  const iconColors = {
+    money: 'text-emerald-400',
+    savings: 'text-yellow-400',
+    payback: 'text-blue-400',
+    projection: 'text-purple-400',
+    default: 'text-slate-400'
+  }
+
+  const formatCurrency = (value) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(value)
+  }
+
+  return (
+    <div
+      className={`card bg-gradient-to-br ${colorClasses[color] || colorClasses.default} animate-fade-in-up`}
+      style={{ animationDelay: `${delay}ms` }}
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <p className="stat-label mb-1 text-slate-400">{title}</p>
+          <div className="flex items-baseline gap-2">
+            <span className="stat-value text-white">{formatCurrency(value)}</span>
+          </div>
+          {subtitle && (
+            <div className="mt-2 text-sm text-slate-500">
+              {subtitle}
+            </div>
+          )}
+        </div>
+        <div className={`p-3 rounded-xl bg-slate-800/50 ${iconColors[color] || iconColors.default}`}>
+          <Icon size={24} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Componente de Seção de Economia
+function EconomySection() {
+  const { economy, refresh } = useEconomy()
+
+  return (
+    <div className="mb-8">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <TrendingUp className="text-emerald-400" size={20} />
+          <h2 className="text-lg font-semibold text-white">Economia Gerada</h2>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-slate-400">
+          <span>Tarifa: R$ {economy.tarifa_atual.toFixed(2)}/kWh</span>
+          <span className="px-2 py-1 rounded bg-slate-800/50 border border-slate-700/50 capitalize">
+            Bandeira {economy.bandeira.replace('_', ' ')}
+          </span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+        <EconomyCard
+          title="Economia Hoje"
+          value={economy.daily.value_brl}
+          subtitle={`${economy.daily.energy_kwh.toFixed(1)} kWh gerados`}
+          icon={Zap}
+          color="money"
+          delay={0}
+        />
+        <EconomyCard
+          title="Economia Mensal"
+          value={economy.monthly.value_brl}
+          subtitle={`${economy.monthly.energy_kwh.toFixed(1)} kWh gerados`}
+          icon={TrendingUp}
+          color="savings"
+          delay={100}
+        />
+        <EconomyCard
+          title="Economia Total"
+          value={economy.total.value_brl}
+          subtitle={`${economy.total.energy_kwh.toFixed(1)} kWh acumulados`}
+          icon={Battery}
+          color="payback"
+          delay={200}
+        />
+        <EconomyCard
+          title="Projeção 25 Anos"
+          value={economy.projection_25y}
+          subtitle={`Payback: ${economy.payback.percent}% (${economy.payback.years} anos restantes)`}
+          icon={Gauge}
+          color="projection"
+          delay={300}
+        />
+      </div>
+
+      {/* Barra de progresso do payback */}
+      <div className="card bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-700/30">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm text-slate-400">Progresso do Payback</span>
+          <span className="text-sm font-medium text-emerald-400">{economy.payback.percent.toFixed(1)}%</span>
+        </div>
+        <div className="h-3 bg-slate-800 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-1000"
+            style={{ width: `${Math.min(economy.payback.percent, 100)}%` }}
+          />
+        </div>
+        <div className="mt-2 text-xs text-slate-500">
+          {economy.payback.remaining_brl > 0 ? (
+            <span>Faltam {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(economy.payback.remaining_brl)} para o payback completo</span>
+          ) : (
+            <span className="text-emerald-400">🎉 Payback atingido! Seu sistema já se pagou.</span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Componente Card de Estatística
 function StatCard({ title, value, unit, icon: Icon, color, trend, trendValue, delay = 0 }) {
   const colorClasses = {
@@ -739,6 +904,9 @@ function App() {
 
         {/* Energy Stats Cards - Geração Acumulada */}
         <EnergyStatsSection />
+
+        {/* Economy Stats Section - Economia em Reais */}
+        <EconomySection />
 
         {/* Main Dashboard Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">

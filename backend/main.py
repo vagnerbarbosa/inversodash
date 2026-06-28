@@ -386,6 +386,202 @@ async def get_energy_stats(period: str = "day"):
     return stats
 
 
+# ============= ECONOMY CALCULATION =============
+
+# Configuração de tarifa (Energisa PB - valor padrão: R$ 0,77/kWh)
+# Pode ser ajustado via variável de ambiente
+import os
+
+TARIFA_PADRAO = float(os.getenv('TARIFA_KWH', '0.77'))
+BANDEIRA_ATUAL = os.getenv('BANDEIRA_TARIFARIA', 'verde')  # verde, amarela, vermelha_p1, vermelha_p2
+
+# Acréscimos de bandeira (Energisa PB)
+BANDEIRA_ACRESCIMO = {
+    'verde': 0.0,
+    'amarela': 0.020,
+    'vermelha_p1': 0.045,
+    'vermelha_p2': 0.065
+}
+
+# Configurações de economia (em memória - em produção usar banco de dados)
+economy_config = {
+    'tarifa_kwh': TARIFA_PADRAO,
+    'bandeira': BANDEIRA_ATUAL,
+    'custo_instalacao': float(os.getenv('CUSTO_INSTALACAO', '25000')),  # Custo do sistema em R$
+    'data_instalacao': os.getenv('DATA_INSTALACAO', now_brazil().strftime('%Y-%m-%d'))
+}
+
+# Histórico de economia calculada (em memória)
+economy_history = []
+
+def get_tarifa_efetiva():
+    """Retorna a tarifa efetiva com acréscimo de bandeira"""
+    tarifa_base = economy_config['tarifa_kwh']
+    acrescimo = BANDEIRA_ACRESCIMO.get(economy_config['bandeira'], 0.0)
+    return tarifa_base + acrescimo
+
+def calculate_economy_stats():
+    """Calcula estatísticas de economia em reais"""
+    global historical_data, economy_config
+
+    now = now_brazil()
+    tarifa_efetiva = get_tarifa_efetiva()
+
+    stats = {
+        'tarifa_atual': round(tarifa_efetiva, 4),
+        'bandeira': economy_config['bandeira'],
+        'custo_instalacao': economy_config['custo_instalacao'],
+        'data_instalacao': economy_config['data_instalacao'],
+        'daily': {'energy_kwh': 0.0, 'value_brl': 0.0},
+        'monthly': {'energy_kwh': 0.0, 'value_brl': 0.0},
+        'yearly': {'energy_kwh': 0.0, 'value_brl': 0.0},
+        'total': {'energy_kwh': 0.0, 'value_brl': 0.0},
+        'payback': {'percent': 0.0, 'years': 0.0, 'remaining_brl': 0.0},
+        'projection_25y': 0.0
+    }
+
+    if not historical_data:
+        return stats
+
+    try:
+        # Economia do dia atual
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_data = [d for d in historical_data
+                       if datetime.fromisoformat(d.get("timestamp", "")).replace(tzinfo=BR_TIMEZONE) >= today_start]
+        if today_data:
+            daily_energy = max([d.get("energy", {}).get("daily", 0) for d in today_data], default=0)
+            stats['daily']['energy_kwh'] = round(daily_energy, 2)
+            stats['daily']['value_brl'] = round(daily_energy * tarifa_efetiva, 2)
+
+        # Economia do mês atual
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        month_data = [d for d in historical_data
+                      if datetime.fromisoformat(d.get("timestamp", "")).replace(tzinfo=BR_TIMEZONE) >= month_start]
+        if month_data:
+            daily_max = {}
+            for d in month_data:
+                day = datetime.fromisoformat(d.get("timestamp", "")).date()
+                energy = d.get("energy", {}).get("daily", 0)
+                daily_max[day] = max(daily_max.get(day, 0), energy)
+            monthly_energy = sum(daily_max.values())
+            stats['monthly']['energy_kwh'] = round(monthly_energy, 2)
+            stats['monthly']['value_brl'] = round(monthly_energy * tarifa_efetiva, 2)
+
+        # Economia do ano atual
+        year_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        year_data = [d for d in historical_data
+                     if datetime.fromisoformat(d.get("timestamp", "")).replace(tzinfo=BR_TIMEZONE) >= year_start]
+        if year_data:
+            daily_max = {}
+            for d in year_data:
+                day = datetime.fromisoformat(d.get("timestamp", "")).date()
+                energy = d.get("energy", {}).get("daily", 0)
+                daily_max[day] = max(daily_max.get(day, 0), energy)
+            yearly_energy = sum(daily_max.values())
+            stats['yearly']['energy_kwh'] = round(yearly_energy, 2)
+            stats['yearly']['value_brl'] = round(yearly_energy * tarifa_efetiva, 2)
+
+        # Economia total desde a instalação
+        try:
+            install_date = datetime.strptime(economy_config['data_instalacao'], '%Y-%m-%d').date()
+        except:
+            install_date = now.date()
+
+        total_data = [d for d in historical_data]
+        if total_data:
+            daily_max = {}
+            for d in total_data:
+                day = datetime.fromisoformat(d.get("timestamp", "")).date()
+                # Só conta a partir da data de instalação
+                if day >= install_date:
+                    energy = d.get("energy", {}).get("daily", 0)
+                    daily_max[day] = max(daily_max.get(day, 0), energy)
+            total_energy = sum(daily_max.values())
+            total_value = total_energy * tarifa_efetiva
+            stats['total']['energy_kwh'] = round(total_energy, 2)
+            stats['total']['value_brl'] = round(total_value, 2)
+
+            # Cálculo de payback
+            if economy_config['custo_instalacao'] > 0:
+                payback_percent = min((total_value / economy_config['custo_instalacao']) * 100, 100)
+                stats['payback']['percent'] = round(payback_percent, 1)
+                stats['payback']['remaining_brl'] = round(max(economy_config['custo_instalacao'] - total_value, 0), 2)
+
+                # Tempo estimado para payback completo
+                dias_desde_instalacao = (now.date() - install_date).days
+                if dias_desde_instalacao > 0 and total_value > 0:
+                    economia_diaria = total_value / dias_desde_instalacao
+                    dias_restantes = stats['payback']['remaining_brl'] / economia_diaria if economia_diaria > 0 else 0
+                    stats['payback']['years'] = round(dias_restantes / 365, 1)
+
+            # Projeção para 25 anos (vida útil do sistema)
+            if dias_desde_instalacao > 0:
+                media_diaria = total_energy / dias_desde_instalacao
+                projecao_25anos = media_diaria * 365 * 25 * tarifa_efetiva
+                stats['projection_25y'] = round(projecao_25anos, 2)
+
+    except Exception as e:
+        logger.error(f"Erro ao calcular economia: {e}")
+
+    return stats
+
+
+@app.get("/api/economy")
+async def get_economy_stats():
+    """
+    Retorna estatísticas de economia em reais.
+    Inclui economia diária, mensal, anual e total.
+    """
+    stats = calculate_economy_stats()
+    return stats
+
+
+@app.get("/api/economy/config")
+async def get_economy_config():
+    """Retorna configuração atual de economia"""
+    return {
+        'tarifa_kwh': economy_config['tarifa_kwh'],
+        'bandeira': economy_config['bandeira'],
+        'custo_instalacao': economy_config['custo_instalacao'],
+        'data_instalacao': economy_config['data_instalacao']
+    }
+
+
+@app.post("/api/economy/config")
+async def update_economy_config(config: dict):
+    """
+    Atualiza configuração de economia.
+
+    Exemplo de payload:
+    {
+        "tarifa_kwh": 0.77,
+        "bandeira": "verde",
+        "custo_instalacao": 25000,
+        "data_instalacao": "2024-01-15"
+    }
+    """
+    global economy_config
+
+    try:
+        if 'tarifa_kwh' in config:
+            economy_config['tarifa_kwh'] = float(config['tarifa_kwh'])
+        if 'bandeira' in config:
+            if config['bandeira'] in BANDEIRA_ACRESCIMO:
+                economy_config['bandeira'] = config['bandeira']
+            else:
+                return {"error": f"Bandeira inválida. Use: {list(BANDEIRA_ACRESCIMO.keys())}"}
+        if 'custo_instalacao' in config:
+            economy_config['custo_instalacao'] = float(config['custo_instalacao'])
+        if 'data_instalacao' in config:
+            # Validar formato de data
+            datetime.strptime(config['data_instalacao'], '%Y-%m-%d')
+            economy_config['data_instalacao'] = config['data_instalacao']
+
+        return {"success": True, "config": economy_config}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ============= HEALTH CHECK =============
 
 @app.get("/health")
