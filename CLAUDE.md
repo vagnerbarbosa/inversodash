@@ -51,6 +51,8 @@ docker compose ps
 | `make build` | Reconstrói containers |
 | `make clean` | Remove tudo (incluindo volumes) |
 | `make test` | Testa conexão com inversor |
+| `make network-info` | Mostra IPs de acesso |
+| `make setup-mdns` | Configura mDNS (requer sudo) |
 
 ---
 
@@ -92,6 +94,19 @@ ip route get 1.1.1.1 | grep -oP 'src \K\S+'
 - ✅ Todos os dispositivos na mesma rede WiFi
 - ✅ Firewall permitindo porta 80 (HTTP)
 - ✅ Docker rodando com `make start`
+
+### Acesso via mDNS (opcional)
+
+Configurar nome amigável na rede:
+```bash
+sudo make setup-mdns
+```
+
+Após configurar, acesse em qualquer dispositivo:
+- http://**inversodash** (nome descoberto via mDNS/Bonjour)
+- http://**vagner-barbosa-B150M-Gaming-3.local** (hostname da máquina)
+
+**Nota**: O mDNS permite descoberta automática na rede sem precisar saber o IP.
 
 ---
 
