@@ -13,6 +13,7 @@ import {
 import PVStringsSection from './components/PVStringsSection'
 import ElectricalDetails from './components/ElectricalDetails'
 import CyberpunkCityBackground from './components/CyberpunkCityBackground'
+import TariffFlag from './components/TariffFlag'
 
 // Hook personalizado para WebSocket
 function useWebSocket(url) {
@@ -226,9 +227,7 @@ function EconomySection() {
         </div>
         <div className="flex items-center gap-2 text-sm text-slate-400">
           <span>Tarifa: R$ {economy.tarifa_atual.toFixed(2)}/kWh</span>
-          <span className="px-2 py-1 rounded bg-slate-800/50 border border-slate-700/50 capitalize">
-            Bandeira {economy.bandeira.replace('_', ' ')}
-          </span>
+          <TariffFlag bandeira={economy.bandeira} />
         </div>
       </div>
 
