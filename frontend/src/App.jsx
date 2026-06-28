@@ -407,7 +407,9 @@ function TemperaturePanel({ data }) {
 
 // Componente Principal
 function App() {
-  const { data: wsData, connected: wsConnected } = useWebSocket('ws://localhost:8000/ws')
+  // WebSocket URL dinâmico baseado no host atual
+  const wsUrl = `ws://${window.location.host}/ws`
+  const { data: wsData, connected: wsConnected } = useWebSocket(wsUrl)
   const { history, refresh } = useHistory(60)
   const [showSettings, setShowSettings] = useState(false)
 
