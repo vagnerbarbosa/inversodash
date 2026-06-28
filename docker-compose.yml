@@ -29,7 +29,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - INVERTER_IP=${INVERTER_IP:-${INVERTER_IP}}
+      - INVERTER_IP=${INVERTER_IP}
       - INVERTER_PORT=${INVERTER_PORT:-502}
       - INFLUXDB_URL=http://influxdb:8086
       - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
@@ -44,7 +44,7 @@ services:
       - influxdb
     # Modo de rede host para acessar o inversor na rede local
     extra_hosts:
-      - "inverter:${INVERTER_IP:-${INVERTER_IP}}"
+      - "inverter:${INVERTER_IP}"
 
   # Frontend React
   frontend:

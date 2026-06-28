@@ -22,7 +22,10 @@ logger = logging.getLogger(__name__)
 class InverterReader:
     """Classe para ler dados do inversor Goodwe"""
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 502):
+    def __init__(self, host: str = None, port: int = 502):
+        if host is None:
+            import os
+            host = os.getenv('INVERTER_IP', '127.0.0.1')
         self.host = host
         self.port = port
         self.client = None
@@ -198,8 +201,10 @@ async def read_inverter_goodwe_lib() -> Dict[str, Any]:
     """Lê dados usando a biblioteca goodwe (fallback)"""
     try:
         import goodwe
+        import os
+        inverter_ip = os.getenv('INVERTER_IP', '127.0.0.1')
         inverter = await asyncio.wait_for(
-            goodwe.connect("127.0.0.1", family="DT"),
+            goodwe.connect(inverter_ip, family="DT"),
             timeout=10
         )
         runtime_data = await inverter.read_runtime_data()

@@ -18,7 +18,7 @@ UPDATE_INTERVAL = int(os.getenv('UPDATE_INTERVAL', '30'))
 
 # Configurações do InfluxDB
 INFLUXDB_URL = os.getenv('INFLUXDB_URL', 'http://influxdb:8086')
-INFLUXDB_TOKEN = os.getenv('INFLUXDB_TOKEN', 'admin:inversodash2024')
+INFLUXDB_TOKEN = os.getenv('INFLUXDB_TOKEN', '')
 INFLUXDB_ORG = os.getenv('INFLUXDB_ORG', 'inversodash')
 INFLUXDB_BUCKET = os.getenv('INFLUXDB_BUCKET', 'inversodash')
 

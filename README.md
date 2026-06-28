@@ -100,12 +100,14 @@ ws://localhost:8000/ws
 
 ## 🔧 Configuração
 
-Para alterar o IP do inversor, edite o arquivo `docker-compose.yml`:
+Configure o IP do inversor no arquivo `.env`:
 
-```yaml
-environment:
-  - INVERTER_IP=<IP_DO_INVERSOR>  # Altere aqui
-  - INVERTER_PORT=502
+```bash
+# Copie o exemplo
+cp .env.example .env
+
+# Edite com seu IP
+INVERTER_IP=<IP_DO_INVERSOR>  # Altere para o IP do seu inversor
 ```
 
 ## 📊 Dados Coletados
@@ -154,7 +156,7 @@ python main.py
 ## 🔍 Troubleshooting
 
 ### Inversor não conecta
-- Verifique se o IP <IP_DO_INVERSOR> está correto
+- Verifique se o IP configurado no `.env` está correto
 - Verifique se a porta 502 está aberta: `nc -zv <IP_DO_INVERSOR> 502`
 - Verifique se o inversor suporta Modbus TCP
 
