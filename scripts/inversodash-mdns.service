@@ -1,0 +1,13 @@
+[Unit]
+Description=InversoDash mDNS Announcer
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/avahi-publish -s "InversoDash" _http._tcp 80 "path=/"
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
