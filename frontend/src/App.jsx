@@ -512,7 +512,7 @@ function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between">
             <p className="text-sm text-slate-500">
-              InversoDash © 2024 - Dashboard Solar Goodwe
+              InversoDash © {new Date().getFullYear()} - Dashboard Solar Goodwe
             </p>
             <p className="text-sm text-slate-500">
               Dados atualizados a cada 30s
