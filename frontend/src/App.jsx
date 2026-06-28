@@ -9,6 +9,10 @@ import {
   Settings, Menu, ChevronDown, ChevronUp, Gauge
 } from 'lucide-react'
 
+// Importar novos componentes
+import PVStringsSection from './components/PVStringsSection'
+import ElectricalDetails from './components/ElectricalDetails'
+
 // Hook personalizado para WebSocket
 function useWebSocket(url) {
   const [data, setData] = useState(null)
@@ -483,65 +487,6 @@ function PowerChart({ data, history }) {
   )
 }
 
-// Componente de Fluxo de Energia
-function EnergyFlow({ data }) {
-  const pvPower = data?.pv?.total_power || 0
-  const outputPower = Math.abs(data?.power?.output || 0)
-  const gridPower = data?.grid?.voltage || 0
-
-  return (
-    <div className="card-highlight">
-      <div className="flex items-center gap-3 mb-6">
-        <Zap className="text-grid-400" size={24} />
-        <h3 className="text-lg font-semibold text-white">Fluxo de Energia</h3>
-      </div>
-
-      <div className="relative h-64 flex flex-col items-center justify-center">
-        {/* Painel Solar */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 flex flex-col items-center">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-solar-400 to-solar-600 flex items-center justify-center shadow-lg shadow-solar-500/30">
-            <Sun size={28} className="text-white" />
-          </div>
-          <span className="text-solar-400 font-medium mt-2">{pvPower} W</span>
-          <span className="text-slate-500 text-xs">Painel Solar</span>
-        </div>
-
-        {/* Seta Solar -> Inversor */}
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 flex flex-col items-center">
-          <div className="w-1 h-12 bg-gradient-to-b from-solar-500/50 to-violet-500/50 relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-b from-solar-400 to-violet-400 animate-flow" />
-          </div>
-        </div>
-
-        {/* Inversor */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
-          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-slate-600 to-slate-800 flex items-center justify-center border border-slate-500/50">
-            <Power size={24} className="text-slate-300" />
-          </div>
-          <span className="text-violet-400 font-medium mt-2">{outputPower} W</span>
-          <span className="text-slate-500 text-xs">Inversor</span>
-        </div>
-
-        {/* Seta Inversor -> Grid */}
-        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 flex flex-col items-center">
-          <div className="w-1 h-12 bg-gradient-to-b from-violet-500/50 to-grid-500/50 relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-b from-violet-400 to-grid-400 animate-flow" style={{ animationDelay: '0.5s' }} />
-          </div>
-        </div>
-
-        {/* Grid */}
-        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 flex flex-col items-center">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-grid-400 to-grid-600 flex items-center justify-center shadow-lg shadow-grid-500/30">
-            <Home size={28} className="text-white" />
-          </div>
-          <span className="text-grid-400 font-medium mt-2">{gridPower} V</span>
-          <span className="text-slate-500 text-xs">Rede / Casa</span>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // Componente de Tooltip para Modo de Operação
 function WorkModeTooltip({ workMode }) {
   // Descrições detalhadas dos modos de operação (baseado nos manuais oficiais da Goodwe)
@@ -788,6 +733,55 @@ function TemperaturePanel({ data }) {
   )
 }
 
+// Componente de Horas de Operação
+function OperationHoursPanel({ diagnostics = {} }) {
+  const operationHours = diagnostics?.operation_hours || 0
+
+  const formatHours = (hours) => {
+    const days = Math.floor(hours / 24)
+    const remainingHours = Math.floor(hours % 24)
+    if (days > 0) {
+      return `${days}d ${remainingHours}h`
+    }
+    return `${remainingHours}h`
+  }
+
+  const expectedLifespan = 25 * 365 * 24
+  const lifespanPercentage = Math.min((operationHours / expectedLifespan) * 100, 100)
+
+  return (
+    <div className="card">
+      <div className="flex items-center gap-3 mb-4">
+        <Clock className="text-blue-400" size={24} />
+        <h3 className="text-lg font-semibold text-white">Horas de Operação</h3>
+      </div>
+
+      <div className="text-3xl font-bold text-white mb-2">
+        {operationHours.toLocaleString()}
+        <span className="text-sm font-normal text-slate-400 ml-1">h</span>
+      </div>
+
+      <div className="text-sm text-slate-400 mb-3">
+        ≈ {formatHours(operationHours)}
+      </div>
+
+      <div>
+        <div className="flex justify-between text-xs text-slate-400 mb-1">
+          <span>Vida Útil Estimada</span>
+          <span>{lifespanPercentage.toFixed(1)}%</span>
+        </div>
+        <div className="w-full bg-slate-700 rounded-full h-2">
+          <div
+            className="bg-blue-500 h-2 rounded-full transition-all duration-500"
+            style={{ width: `${lifespanPercentage}%` }}
+          />
+        </div>
+        <p className="text-xs text-slate-500 mt-1">Baseado em expectativa de 25 anos</p>
+      </div>
+    </div>
+  )
+}
+
 // Componente de Seção de Estatísticas de Energia
 function EnergyStatsSection() {
   const dayStats = useEnergyStats('day')
@@ -908,16 +902,29 @@ function App() {
         {/* Economy Stats Section - Economia em Reais */}
         <EconomySection />
 
-        {/* Main Dashboard Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        {/* Dados Elétricos Detalhados */}
+        <div className="mb-8">
+          <ElectricalDetails grid={currentData?.grid} power={currentData?.power} />
+        </div>
+
+        {/* Strings PV Individuais */}
+        <div className="mb-8">
+          <PVStringsSection
+            pvStrings={currentData?.pv_strings}
+            totalPower={currentData?.pv?.total_power}
+          />
+        </div>
+
+        {/* Gráfico de Potência */}
+        <div className="mb-8">
           <PowerChart data={currentData} history={history} />
-          <EnergyFlow data={currentData} />
         </div>
 
         {/* Bottom Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <SystemInfo data={currentData} />
           <TemperaturePanel data={currentData} />
+          <OperationHoursPanel diagnostics={currentData?.diagnostics} />
         </div>
       </main>
 

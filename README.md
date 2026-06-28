@@ -202,8 +202,6 @@ inversodash/
 │       ├── main.jsx
 │       ├── App.jsx
 │       └── index.css
-└── database/
-    └── (InfluxDB volumes)
 ```
 
 ## 📚 Tecnologias

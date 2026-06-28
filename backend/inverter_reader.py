@@ -78,11 +78,14 @@ class InverterReader:
             "timestamp": now_brazil().isoformat(),
             "connected": False,
             "pv": {},
+            "pv_strings": [],  # Dados individuais de cada string PV
             "grid": {},
             "power": {},
+            "meter": {},  # Dados do medidor/smart meter
             "temperature": {},
             "status": {},
-            "energy": {}
+            "energy": {},
+            "diagnostics": {}  # Dados de diagnóstico
         }
 
         if not await self.connect():
@@ -115,6 +118,39 @@ class InverterReader:
             if regs:
                 data["pv"]["pv2_current"] = self.parse_value(regs, scale=0.1)
 
+            # PV3 Voltage (35007) - se disponível
+            regs = self.read_register(35007, 1)
+            if regs:
+                data["pv"]["pv3_voltage"] = self.parse_value(regs, scale=0.1)
+
+            # PV3 Current (35008)
+            regs = self.read_register(35008, 1)
+            if regs:
+                data["pv"]["pv3_current"] = self.parse_value(regs, scale=0.1)
+
+            # PV4 Voltage (35009) - se disponível
+            regs = self.read_register(35009, 1)
+            if regs:
+                data["pv"]["pv4_voltage"] = self.parse_value(regs, scale=0.1)
+
+            # PV4 Current (35010)
+            regs = self.read_register(35010, 1)
+            if regs:
+                data["pv"]["pv4_current"] = self.parse_value(regs, scale=0.1)
+
+            # Criar array de strings PV para fácil iteração no frontend
+            for i in range(1, 5):
+                v_key = f"pv{i}_voltage"
+                i_key = f"pv{i}_current"
+                if v_key in data["pv"] or i_key in data["pv"]:
+                    string_data = {
+                        "string_id": i,
+                        "voltage": data["pv"].get(v_key, 0),
+                        "current": data["pv"].get(i_key, 0),
+                        "power": data["pv"].get(v_key, 0) * data["pv"].get(i_key, 0)
+                    }
+                    data["pv_strings"].append(string_data)
+
             # PV Total Power (35107)
             regs = self.read_register(35107, 1)
             if regs:
@@ -134,6 +170,26 @@ class InverterReader:
             regs = self.read_register(35123, 1)
             if regs:
                 data["grid"]["frequency"] = self.parse_value(regs, scale=0.01)
+
+            # Grid Power Factor (35124) - scale 0.001
+            regs = self.read_register(35124, 1)
+            if regs:
+                data["grid"]["power_factor"] = self.parse_value(regs, scale=0.001)
+
+            # Active Power (35125)
+            regs = self.read_register(35125, 1)
+            if regs:
+                data["power"]["active"] = self.parse_value(regs, signed=True)
+
+            # Reactive Power (35126)
+            regs = self.read_register(35126, 1)
+            if regs:
+                data["power"]["reactive"] = self.parse_value(regs, signed=True)
+
+            # Apparent Power (35127)
+            regs = self.read_register(35127, 1)
+            if regs:
+                data["power"]["apparent"] = self.parse_value(regs)
 
             # Output Power (35137)
             regs = self.read_register(35137, 1)
@@ -160,6 +216,46 @@ class InverterReader:
             regs = self.read_register(35192, 2)
             if regs:
                 data["energy"]["total"] = self.parse_value(regs, scale=0.1)
+
+            # Energy Exported Today (35193) - scale 0.1
+            regs = self.read_register(35193, 1)
+            if regs:
+                data["energy"]["exported_daily"] = self.parse_value(regs, scale=0.1)
+                logger.info(f"Smart Meter OK - Exportado hoje: {data['energy']['exported_daily']} kWh")
+            else:
+                logger.info("Smart Meter: Registro 35193 (exported_daily) não disponível - possivelmente sem smart meter instalado")
+
+            # Energy Exported Total (35194) - scale 0.1
+            regs = self.read_register(35194, 2)
+            if regs:
+                data["energy"]["exported_total"] = self.parse_value(regs, scale=0.1)
+                logger.info(f"Smart Meter OK - Exportado total: {data['energy']['exported_total']} kWh")
+            else:
+                logger.info("Smart Meter: Registro 35194 (exported_total) não disponível")
+
+            # Energy Imported Today (35196) - scale 0.1
+            regs = self.read_register(35196, 1)
+            if regs:
+                data["energy"]["imported_daily"] = self.parse_value(regs, scale=0.1)
+                logger.info(f"Smart Meter OK - Importado hoje: {data['energy']['imported_daily']} kWh")
+            else:
+                logger.info("Smart Meter: Registro 35196 (imported_daily) não disponível")
+
+            # Energy Imported Total (35197) - scale 0.1
+            regs = self.read_register(35197, 2)
+            if regs:
+                data["energy"]["imported_total"] = self.parse_value(regs, scale=0.1)
+                logger.info(f"Smart Meter OK - Importado total: {data['energy']['imported_total']} kWh")
+            else:
+                logger.info("Smart Meter: Registro 35197 (imported_total) não disponível")
+
+            # Total Operation Hours (35199)
+            regs = self.read_register(35199, 1)
+            if regs:
+                data["diagnostics"]["operation_hours"] = self.parse_value(regs)
+                logger.info(f"Operation Hours OK: {data['diagnostics']['operation_hours']}h")
+            else:
+                logger.info("Operation Hours: Registro 35199 não disponível")
 
             # Work Mode (35000)
             regs = self.read_register(35000, 1)
@@ -203,44 +299,93 @@ async def read_inverter_goodwe_lib() -> Dict[str, Any]:
         import goodwe
         import os
         inverter_ip = os.getenv('INVERTER_IP', '127.0.0.1')
+        logger.info(f"Tentando conectar via goodwe lib ao IP: {inverter_ip}")
         inverter = await asyncio.wait_for(
             goodwe.connect(inverter_ip, family="DT"),
             timeout=10
         )
         runtime_data = await inverter.read_runtime_data()
+        logger.info(f"Goodwe lib - Dados obtidos: e_day={runtime_data.get('e_day', 'N/A')}, e_total={runtime_data.get('e_total', 'N/A')}")
 
         data = {
             "timestamp": now_brazil().isoformat(),
             "connected": True,
             "pv": {},
+            "pv_strings": [],
             "grid": {},
             "power": {},
+            "meter": {},
             "temperature": {},
             "status": {},
-            "energy": {}
+            "energy": {},
+            "diagnostics": {}
         }
 
         work_mode_set = False
 
+        sensor_count = 0
         for sensor in inverter.sensors():
             if sensor.id_ in runtime_data:
                 val = runtime_data[sensor.id_]
                 name = sensor.name.lower()
+                sensor_count += 1
 
-                if "pv" in name:
+                # Geração de energia do inversor (e_day, e_total) - VER PRIMEIRO pois contém "pv" no nome
+                if sensor.id_ == "e_day":
+                    data["energy"]["daily"] = val
+                    logger.info(f"Geração hoje: {val} kWh")
+                elif sensor.id_ == "e_total":
+                    data["energy"]["total"] = val
+                    logger.info(f"Geração total: {val} kWh")
+                elif "pv" in name:
                     if "voltage" in name:
                         data["pv"]["pv1_voltage"] = val
                     elif "current" in name:
                         data["pv"]["pv1_current"] = val
                     elif "power" in name:
                         data["pv"]["total_power"] = val
-                elif "grid" in name or "voltage" in name:
-                    if "voltage" in name:
+                # Dados do Grid (vgrid1, igrid1, fgrid1, etc)
+                elif sensor.id_.startswith("vgrid"):
+                    if "voltage" not in data["grid"]:
                         data["grid"]["voltage"] = val
-                    elif "current" in name:
+                        logger.info(f"Grid Voltage: {val}V")
+                elif sensor.id_.startswith("igrid"):
+                    if "current" not in data["grid"]:
                         data["grid"]["current"] = val
-                    elif "freq" in name:
+                        logger.info(f"Grid Current: {val}A")
+                elif sensor.id_.startswith("fgrid"):
+                    if "frequency" not in data["grid"]:
                         data["grid"]["frequency"] = val
+                        logger.info(f"Grid Frequency: {val}Hz")
+                elif sensor.id_ == "power_factor":
+                    data["grid"]["power_factor"] = val
+                    logger.info(f"Power Factor: {val}")
+                # Dados de Potência (active, reactive, apparent)
+                elif sensor.id_ == "total_inverter_power":
+                    data["power"]["active"] = val
+                    logger.info(f"Active Power: {val}W")
+                elif sensor.id_ == "reactive_power":
+                    data["power"]["reactive"] = val
+                    logger.info(f"Reactive Power: {val}VAR")
+                elif sensor.id_ == "apparent_power":
+                    data["power"]["apparent"] = val
+                    logger.info(f"Apparent Power: {val}VA")
+                # Smart Meter / Medidor Bidirecional
+                elif sensor.id_ == "meter_e_total_exp":
+                    data["energy"]["exported_total"] = val
+                    logger.info(f"Smart Meter - Exportado total: {val} kWh")
+                elif sensor.id_ == "meter_e_total_imp":
+                    data["energy"]["imported_total"] = val
+                    logger.info(f"Smart Meter - Importado total: {val} kWh")
+                elif sensor.id_ == "meter_active_power":
+                    data["meter"]["active_power"] = val
+                elif sensor.id_ == "meter_comm_label":
+                    data["meter"]["communication_status"] = val
+                    if val:
+                        logger.info(f"Smart Meter - Status comunicação: {val}")
+                elif sensor.id_ == "h_total":
+                    data["diagnostics"]["operation_hours"] = val
+                    logger.info(f"Operation Hours: {val}h")
                 elif "temp" in name:
                     if "inverter" in name:
                         data["temperature"]["inverter"] = val
@@ -285,6 +430,42 @@ async def read_inverter_goodwe_lib() -> Dict[str, Any]:
                         data["energy"]["daily"] = val
                     elif "total" in name:
                         data["energy"]["total"] = val
+
+        # Extrair dados das strings PV individuais
+        pv_strings_data = {}
+        for sensor in inverter.sensors():
+            if sensor.id_ in runtime_data:
+                sensor_id = sensor.id_
+                # Extrair vpvx e ipvx usando o ID do sensor (vpv1, ipv1, etc)
+                if sensor_id.startswith("vpv"):
+                    try:
+                        string_num = int(sensor_id.replace("vpv", "").strip())
+                        if string_num not in pv_strings_data:
+                            pv_strings_data[string_num] = {}
+                        pv_strings_data[string_num]["voltage"] = runtime_data[sensor_id]
+                    except:
+                        pass
+                elif sensor_id.startswith("ipv"):
+                    try:
+                        string_num = int(sensor_id.replace("ipv", "").strip())
+                        if string_num not in pv_strings_data:
+                            pv_strings_data[string_num] = {}
+                        pv_strings_data[string_num]["current"] = runtime_data[sensor_id]
+                    except:
+                        pass
+
+        # Montar array de strings PV
+        for string_id, values in sorted(pv_strings_data.items()):
+            voltage = values.get("voltage", 0)
+            current = values.get("current", 0)
+            power = voltage * current if voltage and current else 0
+            data["pv_strings"].append({
+                "string_id": string_id,
+                "voltage": voltage,
+                "current": current,
+                "power": power
+            })
+            logger.info(f"PV String {string_id}: V={voltage}V, I={current}A, P={power}W")
 
         # Fallback para work_mode se não foi definido
         if not work_mode_set or not data["status"].get("work_mode"):

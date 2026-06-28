@@ -4,6 +4,7 @@ Backend FastAPI para Dashboard do Inversor Solar
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from typing import Dict, Any, List
@@ -11,6 +12,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from influxdb_client import InfluxDBClient, Point
+from influxdb_client.client.write_api import SYNCHRONOUS
 import schedule
 import uvicorn
 
@@ -22,6 +25,112 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Configurações do InfluxDB
+INFLUXDB_URL = os.getenv('INFLUXDB_URL', 'http://influxdb:8086')
+INFLUXDB_TOKEN = os.getenv('INFLUXDB_TOKEN', '')
+INFLUXDB_ORG = os.getenv('INFLUXDB_ORG', 'inversodash')
+INFLUXDB_BUCKET = os.getenv('INFLUXDB_BUCKET', 'inversodash')
+
+# Cliente InfluxDB (inicializado sob demanda)
+influxdb_client = None
+influxdb_write_api = None
+
+def get_influxdb_client():
+    """Retorna cliente InfluxDB, inicializando se necessário"""
+    global influxdb_client, influxdb_write_api
+    if influxdb_client is None and INFLUXDB_TOKEN:
+        try:
+            influxdb_client = InfluxDBClient(
+                url=INFLUXDB_URL,
+                token=INFLUXDB_TOKEN,
+                org=INFLUXDB_ORG
+            )
+            influxdb_write_api = influxdb_client.write_api(write_options=SYNCHRONOUS)
+            logger.info(f"InfluxDB client inicializado: {INFLUXDB_URL}")
+        except Exception as e:
+            logger.error(f"Erro ao conectar ao InfluxDB: {e}")
+    return influxdb_client, influxdb_write_api
+
+async def save_to_influxdb(data: Dict[str, Any]):
+    """Salva dados do inversor no InfluxDB"""
+    try:
+        client, write_api = get_influxdb_client()
+        if not write_api or not data.get("connected"):
+            return
+
+        timestamp = data.get("timestamp")
+        if not timestamp:
+            timestamp = datetime.now(BR_TIMEZONE).isoformat()
+
+        # Criar ponto principal com dados do inversor
+        point = Point("inverter_data") \
+            .tag("device", "goodwe_inverter") \
+            .time(timestamp)
+
+        # Dados PV
+        pv = data.get("pv", {})
+        if pv.get("total_power") is not None:
+            point = point.field("pv_total_power", float(pv["total_power"]))
+        if pv.get("pv1_voltage") is not None:
+            point = point.field("pv1_voltage", float(pv["pv1_voltage"]))
+        if pv.get("pv1_current") is not None:
+            point = point.field("pv1_current", float(pv["pv1_current"]))
+
+        # Dados do Grid
+        grid = data.get("grid", {})
+        if grid.get("voltage") is not None:
+            point = point.field("grid_voltage", float(grid["voltage"]))
+        if grid.get("current") is not None:
+            point = point.field("grid_current", float(grid["current"]))
+        if grid.get("frequency") is not None:
+            point = point.field("grid_frequency", float(grid["frequency"]))
+        if grid.get("power_factor") is not None:
+            point = point.field("power_factor", float(grid["power_factor"]))
+
+        # Dados de Potência
+        power = data.get("power", {})
+        if power.get("active") is not None:
+            point = point.field("power_active", float(power["active"]))
+        if power.get("reactive") is not None:
+            point = point.field("power_reactive", float(power["reactive"]))
+        if power.get("apparent") is not None:
+            point = point.field("power_apparent", float(power["apparent"]))
+
+        # Temperaturas
+        temp = data.get("temperature", {})
+        if temp.get("inverter") is not None:
+            point = point.field("temp_inverter", float(temp["inverter"]))
+        if temp.get("heatsink") is not None:
+            point = point.field("temp_heatsink", float(temp["heatsink"]))
+
+        # Energia
+        energy = data.get("energy", {})
+        if energy.get("daily") is not None:
+            point = point.field("energy_daily", float(energy["daily"]))
+        if energy.get("total") is not None:
+            point = point.field("energy_total", float(energy["total"]))
+
+        # Salvar ponto
+        write_api.write(bucket=INFLUXDB_BUCKET, record=point)
+
+        # Salvar strings PV individualmente
+        for string in data.get("pv_strings", []):
+            string_point = Point("pv_string") \
+                .tag("device", "goodwe_inverter") \
+                .tag("string_id", str(string.get("string_id", 0))) \
+                .time(timestamp) \
+                .field("voltage", float(string.get("voltage", 0))) \
+                .field("current", float(string.get("current", 0))) \
+                .field("power", float(string.get("power", 0)))
+            write_api.write(bucket=INFLUXDB_BUCKET, record=string_point)
+
+        logger.debug(f"Dados salvos no InfluxDB: {timestamp}")
+
+    except Exception as e:
+        import traceback
+        logger.error(f"Erro ao salvar no InfluxDB: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
 
 # Dados em memória (para histórico)
 historical_data: List[Dict[str, Any]] = []
@@ -51,6 +160,8 @@ async def read_inverter_data():
         data = await read_inverter_goodwe_lib()
 
         if not data.get("connected"):
+            # Aguardar um pouco antes de tentar fallback (inversor só aceita 1 conexão)
+            await asyncio.sleep(2)
             # Fallback para leitura Modbus direta
             reader = InverterReader()
             data = await reader.read_all_data()
@@ -68,8 +179,12 @@ async def read_inverter_data():
             "data": current_data
         })
 
+        # Salvar dados no InfluxDB
+        await save_to_influxdb(data)
+
         logger.info(f"Dados lidos: PV={data.get('pv', {}).get('total_power', 0)}W, "
-                   f"Temp={data.get('temperature', {}).get('inverter', 0)}°C")
+                   f"Temp={data.get('temperature', {}).get('inverter', 0)}°C, "
+                   f"Energy={data.get('energy', {}).get('daily', 0)}kWh")
 
     except Exception as e:
         logger.error(f"Erro na leitura: {e}")
