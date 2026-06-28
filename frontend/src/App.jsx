@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell
@@ -377,9 +377,130 @@ function EnergyFlow({ data }) {
   )
 }
 
+// Componente de Tooltip para Modo de Operação
+function WorkModeTooltip({ workMode }) {
+  // Descrições detalhadas dos modos de operação (baseado nos manuais oficiais da Goodwe)
+  // Fontes: GW_SDT-G3_User-Manual, GW_EH_User_Manual, GW_XS_User_Manual
+  const modeDescriptions = {
+    'Espera': {
+      title: 'Modo Espera (Waiting)',
+      description: 'Estado inicial após o inversor ser energizado. Aguarda condições adequadas (tensão dos painéis, condições da rede) para iniciar. Quando as condições são atendidas, entra no modo de auto-verificação. Se detectar falha, entra em modo de falha.',
+      color: 'text-yellow-400'
+    },
+    'Normal': {
+      title: 'Modo Normal (On-Grid)',
+      description: 'Operação padrão conectada à rede. O inversor converte energia DC dos painéis em AC e injeta na rede elétrica com eficiência máxima via MPPT (140V-1000V). Se detectar falha, entra em modo de falha.',
+      color: 'text-emerald-400'
+    },
+    'Falha': {
+      title: 'Modo Falha (Fault)',
+      description: 'Estado de proteção ativado quando o inversor detecta anomalias: tensão/frequência da rede fora do padrão, falta de isolamento, superaquecimento, falha de hardware, etc. Após limpar a falha, retorna ao modo Espera.',
+      color: 'text-red-400'
+    },
+    'Desligado': {
+      title: 'Modo Desligado (Off)',
+      description: 'O inversor está desligado manualmente via app SolarGo ou por comando externo. Não está gerando energia. Pode ser religado remotamente ou manualmente.',
+      color: 'text-slate-400'
+    },
+    'Verificação': {
+      title: 'Modo Verificação (Self-Check)',
+      description: 'Executa diagnósticos e inicialização antes de iniciar a operação. Verifica tensão, frequência, hardware interno e condições de segurança. Se aprovado, entra no modo Normal. Se falhar, entra em modo de Falha.',
+      color: 'text-blue-400'
+    },
+    'Atualizando': {
+      title: 'Modo Atualizando (Upgrade)',
+      description: 'O inversor está recebendo atualização de firmware via app SolarGo. NÃO interrompa o processo (pode danificar o equipamento). Ao completar, retorna ao modo Espera antes de reiniciar.',
+      color: 'text-purple-400'
+    },
+    'EPS': {
+      title: 'Modo EPS - Emergency Power Supply',
+      description: 'Modo off-grid/emergência ativado quando há queda de energia da rede. O inversor alimenta cargas críticas de backup independentemente (requer bateria e configuração EPS ativada). Retorna ao modo Normal quando a rede volta.',
+      color: 'text-orange-400'
+    },
+    'DRM': {
+      title: 'Modo DRM - Demand Response Mode',
+      description: 'Resposta à Demanda da rede elétrica (uso principal em Austrália/Nova Zelândia). O inversor ajusta a potência conforme sinais recebidos via porta DRED: DRM0 (desligar), DRM5 (sem exportação), DRM6 (limite 50%), DRM7 (limite 75%), DRM8 (normal).',
+      color: 'text-cyan-400'
+    },
+    'Auto-Teste': {
+      title: 'Modo Auto-Teste (Self-Test)',
+      description: 'O inversor executa testes automáticos de rotina para verificar o funcionamento correto de todos os componentes internos e sistemas de proteção. Pode ser iniciado manualmente ou automaticamente.',
+      color: 'text-indigo-400'
+    }
+  }
+
+  // Normalizar o nome do modo (traduções fallback caso venha do backend em inglês)
+  const normalizeMode = (mode) => {
+    const translations = {
+      'Wait Mode': 'Espera',
+      'Wait': 'Espera',
+      'Waiting': 'Espera',
+      'Standby': 'Espera',
+      'Stand by': 'Espera',
+      'On-grid': 'Normal',
+      'On Grid': 'Normal',
+      'Normal': 'Normal',
+      'Fault': 'Falha',
+      'Off': 'Desligado',
+      'Off-grid': 'EPS',
+      'Off Grid': 'EPS',
+      'Check': 'Verificação',
+      'Check Mode': 'Verificação',
+      'Self-Check': 'Verificação',
+      'Self Check': 'Verificação',
+      'Updating': 'Atualizando',
+      'Update': 'Atualizando',
+      'Upgrade': 'Atualizando',
+      'EPS': 'EPS',
+      'DRM': 'DRM',
+      'Self-Test': 'Auto-Teste',
+      'Self Test': 'Auto-Teste'
+    }
+    return translations[mode] || mode
+  }
+
+  const normalizedMode = normalizeMode(workMode)
+  const modeInfo = modeDescriptions[normalizedMode] || {
+    title: workMode,
+    description: 'Modo de operação não reconhecido. Consulte o manual do inversor para mais informações.',
+    color: 'text-slate-400'
+  }
+
+  return (
+    <div className="group relative"
+    >
+      <div className="flex items-center justify-between p-3 rounded-xl bg-slate-800/50 cursor-help">
+        <div className="flex items-center gap-3">
+          <Activity className="text-slate-400" size={20} />
+          <span className="text-slate-300">Modo de Operação</span>
+          <span className="text-slate-500 text-xs" title="Passe o mouse para ver detalhes">ⓘ</span>
+        </div>
+
+        <span className={`text-sm font-medium ${modeInfo.color}`}>
+          {workMode}
+        </span>
+      </div>
+
+      {/* Tooltip CSS puro - aparece no hover */}
+      <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-80 bg-slate-900 border border-slate-700 rounded-xl p-4 shadow-2xl z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+        <div className="flex items-start gap-3">
+          <Activity className={`${modeInfo.color} flex-shrink-0 mt-0.5`} size={18} />
+          <div>
+            <h4 className={`font-semibold mb-1 ${modeInfo.color}`}>{modeInfo.title}</h4>
+            <p className="text-sm text-slate-300 leading-relaxed">{modeInfo.description}</p>
+          </div>
+        </div>
+
+        {/* Seta do tooltip */}
+        <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-900 border-l border-t border-slate-700 rotate-45"></div>
+      </div>
+    </div>
+  )
+}
+
 // Componente de Informações do Sistema
 function SystemInfo({ data }) {
-  const workMode = data?.status?.work_mode || 'Unknown'
+  const workMode = data?.status?.work_mode || 'Desconhecido'
   const errorCode = data?.status?.error_code || 0
   const isOnline = data?.connected
   const timestamp = data?.timestamp ? new Date(data.timestamp).toLocaleString('pt-BR') : '-'
@@ -409,15 +530,7 @@ function SystemInfo({ data }) {
           </div>
         </div>
 
-        <div className="flex items-center justify-between p-3 rounded-xl bg-slate-800/50">
-          <div className="flex items-center gap-3">
-            <Activity className="text-slate-400" size={20} />
-            <span className="text-slate-300">Modo de Operação</span>
-          </div>
-          <span className={`text-sm font-medium ${workMode === 'Normal' ? 'text-emerald-400' : 'text-yellow-400'}`}>
-            {workMode}
-          </span>
-        </div>
+        <WorkModeTooltip workMode={workMode} />
 
         <div className="flex items-center justify-between p-3 rounded-xl bg-slate-800/50">
           <div className="flex items-center gap-3">
