@@ -36,6 +36,11 @@ services:
       - INFLUXDB_ORG=${INFLUXDB_ORG:-inversodash}
       - INFLUXDB_BUCKET=${INFLUXDB_BUCKET:-inversodash}
       - PYTHONUNBUFFERED=1
+      # Configurações de economia
+      - TARIFA_KWH=${TARIFA_KWH:-0.77}
+      - BANDEIRA_TARIFARIA=${BANDEIRA_TARIFARIA:-verde}
+      - CUSTO_INSTALACAO=${CUSTO_INSTALACAO:-25000}
+      - DATA_INSTALACAO=${DATA_INSTALACAO:-2026-06-28}
     volumes:
       - ./backend:/app
     networks:
