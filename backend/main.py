@@ -234,6 +234,158 @@ async def websocket_endpoint(websocket: WebSocket):
             websocket_clients.remove(websocket)
 
 
+# ============= ENERGY STATISTICS =============
+
+def calculate_energy_stats(period: str) -> Dict[str, Any]:
+    """Calcula estatísticas de energia por período usando dados históricos"""
+    global historical_data
+
+    now = now_brazil()
+    stats = {
+        "period": period,
+        "current": 0.0,
+        "previous": 0.0,
+        "average": 0.0,
+        "change_percent": 0.0,
+        "peak_day": None
+    }
+
+    if not historical_data:
+        return stats
+
+    try:
+        if period == "day":
+            # Hoje (desde a última meia-noite)
+            today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            yesterday_start = today_start - timedelta(days=1)
+
+            today_data = [d for d in historical_data
+                         if datetime.fromisoformat(d.get("timestamp", "")).replace(tzinfo=BR_TIMEZONE) >= today_start]
+            yesterday_data = [d for d in historical_data
+                            if yesterday_start <= datetime.fromisoformat(d.get("timestamp", "")).replace(tzinfo=BR_TIMEZONE) < today_start]
+
+            # Pegar o valor máximo de energia diária (o acumulado do dia)
+            if today_data:
+                stats["current"] = max([d.get("energy", {}).get("daily", 0) for d in today_data], default=0)
+            if yesterday_data:
+                stats["previous"] = max([d.get("energy", {}).get("daily", 0) for d in yesterday_data], default=0)
+
+            # Calcular média dos últimos 7 dias
+            week_ago = today_start - timedelta(days=7)
+            week_data = [d for d in historical_data
+                        if datetime.fromisoformat(d.get("timestamp", "")).replace(tzinfo=BR_TIMEZONE) >= week_ago]
+            daily_values = [max([d.get("energy", {}).get("daily", 0) for d in week_data], default=0)]
+            if len(week_data) >= 7:
+                stats["average"] = sum(daily_values) / len(daily_values)
+
+        elif period == "week":
+            # Esta semana (domingo a hoje)
+            week_start = now - timedelta(days=now.weekday() + 1)  # Domingo
+            week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+            last_week_start = week_start - timedelta(weeks=1)
+
+            # Agrupar por dia e somar
+            def sum_period_energy(data_list, start, end):
+                period_data = [d for d in data_list
+                              if start <= datetime.fromisoformat(d.get("timestamp", "")).replace(tzinfo=BR_TIMEZONE) < end]
+                if not period_data:
+                    return 0.0
+                # Pegar o valor máximo de cada dia e somar
+                daily_max = {}
+                for d in period_data:
+                    day = datetime.fromisoformat(d.get("timestamp", "")).date()
+                    energy = d.get("energy", {}).get("daily", 0)
+                    daily_max[day] = max(daily_max.get(day, 0), energy)
+                return sum(daily_max.values())
+
+            stats["current"] = sum_period_energy(historical_data, week_start, now)
+            stats["previous"] = sum_period_energy(historical_data, last_week_start, week_start)
+
+        elif period == "month":
+            # Este mês
+            month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            last_month = month_start - timedelta(days=1)
+            last_month_start = last_month.replace(day=1)
+
+            def sum_monthly_energy(data_list, start, end):
+                period_data = [d for d in data_list
+                              if start <= datetime.fromisoformat(d.get("timestamp", "")).replace(tzinfo=BR_TIMEZONE) < end]
+                if not period_data:
+                    return 0.0
+                daily_max = {}
+                for d in period_data:
+                    day = datetime.fromisoformat(d.get("timestamp", "")).date()
+                    energy = d.get("energy", {}).get("daily", 0)
+                    daily_max[day] = max(daily_max.get(day, 0), energy)
+                return sum(daily_max.values())
+
+            stats["current"] = sum_monthly_energy(historical_data, month_start, now)
+            stats["previous"] = sum_monthly_energy(historical_data, last_month_start, month_start)
+
+        elif period == "year":
+            # Este ano
+            year_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+            last_year_start = year_start.replace(year=year_start.year - 1)
+
+            def sum_yearly_energy(data_list, start, end):
+                period_data = [d for d in data_list
+                              if start <= datetime.fromisoformat(d.get("timestamp", "")).replace(tzinfo=BR_TIMEZONE) < end]
+                if not period_data:
+                    return 0.0
+                daily_max = {}
+                for d in period_data:
+                    day = datetime.fromisoformat(d.get("timestamp", "")).date()
+                    energy = d.get("energy", {}).get("daily", 0)
+                    daily_max[day] = max(daily_max.get(day, 0), energy)
+                return sum(daily_max.values())
+
+            stats["current"] = sum_yearly_energy(historical_data, year_start, now)
+            stats["previous"] = sum_yearly_energy(historical_data, last_year_start, year_start)
+
+        # Calcular porcentagem de mudança
+        if stats["previous"] > 0:
+            stats["change_percent"] = round(((stats["current"] - stats["previous"]) / stats["previous"]) * 100, 1)
+        elif stats["current"] > 0:
+            stats["change_percent"] = 100.0
+
+        # Encontrar dia de pico (últimos 30 dias)
+        thirty_days_ago = now - timedelta(days=30)
+        recent_data = [d for d in historical_data
+                      if datetime.fromisoformat(d.get("timestamp", "")).replace(tzinfo=BR_TIMEZONE) >= thirty_days_ago]
+
+        if recent_data:
+            peak = max(recent_data, key=lambda x: x.get("energy", {}).get("daily", 0))
+            peak_date = datetime.fromisoformat(peak.get("timestamp", "")).date()
+            stats["peak_day"] = {
+                "date": peak_date.isoformat(),
+                "energy": round(peak.get("energy", {}).get("daily", 0), 2)
+            }
+
+        # Arredondar valores
+        stats["current"] = round(stats["current"], 2)
+        stats["previous"] = round(stats["previous"], 2)
+        stats["average"] = round(stats["average"], 2)
+
+    except Exception as e:
+        logger.error(f"Erro ao calcular estatísticas: {e}")
+
+    return stats
+
+
+@app.get("/api/stats/energy")
+async def get_energy_stats(period: str = "day"):
+    """
+    Retorna estatísticas de energia por período.
+
+    Períodos válidos: day, week, month, year
+    """
+    if period not in ["day", "week", "month", "year"]:
+        return {"error": "Período inválido. Use: day, week, month, year"}
+
+    stats = calculate_energy_stats(period)
+    return stats
+
+
 # ============= HEALTH CHECK =============
 
 @app.get("/health")

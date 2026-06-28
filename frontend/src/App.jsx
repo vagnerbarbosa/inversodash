@@ -60,6 +60,39 @@ function useWebSocket(url) {
   return { data, connected, error }
 }
 
+// Hook para buscar estatísticas de energia
+function useEnergyStats(period = 'day') {
+  const [stats, setStats] = useState({
+    current: 0,
+    previous: 0,
+    change_percent: 0,
+    peak_day: null
+  })
+  const [loading, setLoading] = useState(false)
+
+  const fetchStats = useCallback(async () => {
+    setLoading(true)
+    try {
+      const response = await fetch(`/api/stats/energy?period=${period}`)
+      const result = await response.json()
+      if (!result.error) {
+        setStats(result)
+      }
+    } catch (e) {
+      console.error('Erro ao buscar estatísticas:', e)
+    }
+    setLoading(false)
+  }, [period])
+
+  useEffect(() => {
+    fetchStats()
+    const interval = setInterval(fetchStats, 300000) // Atualiza a cada 5 minutos
+    return () => clearInterval(interval)
+  }, [fetchStats])
+
+  return { stats, loading, refresh: fetchStats }
+}
+
 // Hook para buscar histórico
 function useHistory(minutes = 60) {
   const [history, setHistory] = useState([])
@@ -129,6 +162,78 @@ function StatCard({ title, value, unit, icon: Icon, color, trend, trendValue, de
         </div>
         <div className={`p-3 rounded-xl bg-slate-800/50 ${iconColors[color] || iconColors.default}`}>
           <Icon size={24} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Componente de Card de Estatísticas de Energia
+function EnergyStatsCard({ period, label, stats, delay = 0 }) {
+  const { current, previous, change_percent, peak_day } = stats
+
+  const getTrendIcon = () => {
+    if (change_percent > 0) return '↑'
+    if (change_percent < 0) return '↓'
+    return '→'
+  }
+
+  const getTrendColor = () => {
+    if (change_percent > 0) return 'text-emerald-400'
+    if (change_percent < 0) return 'text-red-400'
+    return 'text-slate-400'
+  }
+
+  const formatPeriodLabel = () => {
+    const labels = {
+      day: 'Hoje',
+      week: 'Esta Semana',
+      month: 'Este Mês',
+      year: 'Este Ano'
+    }
+    return labels[period] || label
+  }
+
+  return (
+    <div
+      className="card bg-gradient-to-br from-slate-700/50 to-slate-800/50 border-slate-600/30 animate-fade-in-up"
+      style={{ animationDelay: `${delay}ms` }}
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <p className="stat-label mb-1 text-slate-400">{formatPeriodLabel()}</p>
+          <div className="flex items-baseline gap-2">
+            <span className="stat-value text-white">{current.toFixed(1)}</span>
+            <span className="text-slate-400 text-sm">kWh</span>
+          </div>
+
+          {/* Comparação com período anterior */}
+          <div className={`flex items-center gap-1 mt-2 text-sm ${getTrendColor()}`}>
+            <span className="font-medium">{getTrendIcon()} {Math.abs(change_percent).toFixed(1)}%</span>
+            <span className="text-slate-500 text-xs ml-1">vs anterior</span>
+          </div>
+
+          {/* Valor anterior */}
+          <div className="mt-1 text-xs text-slate-500">
+            Anterior: {previous.toFixed(1)} kWh
+          </div>
+
+          {/* Dia de pico */}
+          {peak_day && peak_day.energy > 0 && (
+            <div className="mt-2 pt-2 border-t border-slate-700/50">
+              <div className="flex items-center gap-1 text-xs text-slate-400">
+                <span className="text-yellow-400">★</span>
+                <span>Pico: {peak_day.energy.toFixed(1)} kWh</span>
+              </div>
+              <div className="text-xs text-slate-600">
+                {new Date(peak_day.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="p-3 rounded-xl bg-slate-800/50 text-emerald-400">
+          <Battery size={24} />
         </div>
       </div>
     </div>
@@ -405,6 +510,29 @@ function TemperaturePanel({ data }) {
   )
 }
 
+// Componente de Seção de Estatísticas de Energia
+function EnergyStatsSection() {
+  const dayStats = useEnergyStats('day')
+  const weekStats = useEnergyStats('week')
+  const monthStats = useEnergyStats('month')
+  const yearStats = useEnergyStats('year')
+
+  return (
+    <div className="mb-8">
+      <div className="flex items-center gap-3 mb-4">
+        <Battery className="text-emerald-400" size={20} />
+        <h2 className="text-lg font-semibold text-white">Geração de Energia Acumulada</h2>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <EnergyStatsCard period="day" stats={dayStats.stats} delay={0} />
+        <EnergyStatsCard period="week" stats={weekStats.stats} delay={100} />
+        <EnergyStatsCard period="month" stats={monthStats.stats} delay={200} />
+        <EnergyStatsCard period="year" stats={yearStats.stats} delay={300} />
+      </div>
+    </div>
+  )
+}
+
 // Componente Principal
 function App() {
   // WebSocket URL dinâmico baseado no host atual
@@ -460,7 +588,7 @@ function App() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Grid */}
+        {/* Stats Grid - Dados em Tempo Real */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <StatCard
             title="Potência PV"
@@ -495,6 +623,9 @@ function App() {
             delay={300}
           />
         </div>
+
+        {/* Energy Stats Cards - Geração Acumulada */}
+        <EnergyStatsSection />
 
         {/* Main Dashboard Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
