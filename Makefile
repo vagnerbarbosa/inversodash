@@ -73,3 +73,6 @@ status: ## Mostra status dos containers
 api: ## Testa endpoints da API
 	@echo "🧪 Testando API..."
 	@curl -s http://localhost:8000/api/status | head -20
+
+network-info: ## Mostra IPs para acesso na rede local
+	@./scripts/show-network-info.sh

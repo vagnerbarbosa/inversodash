@@ -65,6 +65,36 @@ docker compose ps
 
 ---
 
+## Acesso via Rede Local
+
+O dashboard está configurado para ser acessível de **qualquer dispositivo na mesma rede WiFi** (celular, tablet, TV, notebook, etc.).
+
+### Descobrir o IP da máquina
+
+```bash
+make network-info
+```
+
+Ou manualmente:
+```bash
+ip route get 1.1.1.1 | grep -oP 'src \K\S+'
+```
+
+### URLs de acesso
+
+| Origem | URL |
+|----------|-----|
+| Esta máquina | http://localhost ou http://127.0.0.1 |
+| Outros dispositivos | http://**IP_DA_MAQUINA** (ex: http://192.168.0.100) |
+
+### Requisitos
+
+- ✅ Todos os dispositivos na mesma rede WiFi
+- ✅ Firewall permitindo porta 80 (HTTP)
+- ✅ Docker rodando com `make start`
+
+---
+
 ## Working with Spec Kit
 
 Este projeto usa [GitHub Spec Kit](https://github.github.io/spec-kit/) para desenvolvimento guiado por especificações.
