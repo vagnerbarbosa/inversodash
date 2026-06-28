@@ -215,6 +215,8 @@ async def read_inverter_goodwe_lib() -> Dict[str, Any]:
             "energy": {}
         }
 
+        work_mode_set = False
+
         for sensor in inverter.sensors():
             if sensor.id_ in runtime_data:
                 val = runtime_data[sensor.id_]
@@ -239,16 +241,33 @@ async def read_inverter_goodwe_lib() -> Dict[str, Any]:
                         data["temperature"]["inverter"] = val
                     elif "heatsink" in name:
                         data["temperature"]["heatsink"] = val
-                elif "work" in name or "mode" in name or "status" in name:
-                    if "work_mode" in name or "mode" in name:
-                        data["status"]["work_mode"] = val
-                    elif "error" in name or "fault" in name:
-                        data["status"]["error_code"] = val if val else 0
+                elif "work" in name or "operation" in name:
+                    if "work_mode" in name or "operation_mode" in name or ("mode" in name and "work" in name):
+                        data["status"]["work_mode"] = str(val) if val else "Normal"
+                        work_mode_set = True
+                elif "error" in name or "fault" in name or "alarm" in name:
+                    if "code" in name or "num" in name:
+                        data["status"]["error_code"] = int(val) if val else 0
                 elif "energy" in name:
                     if "day" in name or "daily" in name:
                         data["energy"]["daily"] = val
                     elif "total" in name:
                         data["energy"]["total"] = val
+
+        # Fallback para work_mode se não foi definido
+        if not work_mode_set or not data["status"].get("work_mode"):
+            # Tentar encontrar nos sensores novamente
+            for sensor in inverter.sensors():
+                if sensor.id_ in runtime_data:
+                    if "work" in sensor.name.lower() and "mode" in sensor.name.lower():
+                        data["status"]["work_mode"] = str(runtime_data[sensor.id_])
+                        break
+            else:
+                # Se ainda não temos work_mode, assumir Normal se há geração
+                if data["energy"].get("daily", 0) > 0 or data["pv"].get("total_power", 0) > 0:
+                    data["status"]["work_mode"] = "Normal"
+                else:
+                    data["status"]["work_mode"] = "Standby"
 
         return data
 
